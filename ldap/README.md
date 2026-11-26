@@ -216,11 +216,12 @@ bash install-all.sh --nas <NAS_IP> --domain <LDAP_DOMAIN> \
      --host <LOCAL_ADMIN>@<HOST_IP> --ldap-admin <LDAP_USER>
 ```
 
-`install-all.sh` 依序執行下面三支(也可以分開跑)。密碼在開頭一次問完(查詢帳號 `scan_group`、每台的本機管理員、`--ldap-admin` 的 LDAP 帳號),放在 700 暫存資料夾給三支共用,結束時刪除;`-y` 讓所有確認自動回答 y;中途失敗修好後用 `--from N` 從第 N 步續跑:
+`install-all.sh` 依序執行下面四支(也可以分開跑;第 4 步是 `../syslog/install-syslog.sh`,`--no-syslog` 跳過)。密碼在開頭一次問完(查詢帳號 `scan_group`、每台的本機管理員、`--ldap-admin` 的 LDAP 帳號),放在 700 暫存資料夾給各支共用,結束時刪除;`-y` 讓所有確認自動回答 y;中途失敗修好後用 `--from N` 從第 N 步續跑:
 
 1. `install-sssd-ldap.sh`:用本機管理員登入(這時還沒有 LDAP)
 2. `fix-local-uid.sh`:用有 sudo 的 LDAP 帳號登入(不能用要改號的帳號改自己)
 3. `install-nas-folders.sh`:用同一個 LDAP 帳號登入,預設 `--personal homes:nas-home --shared share:nas-share`
+4. `../syslog/install-syslog.sh`:用同一個 LDAP 帳號登入,重要紀錄送到 NAS、時區(預設 Asia/Taipei,`--timezone` 可改)
 
 ---
 

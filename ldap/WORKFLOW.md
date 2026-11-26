@@ -68,15 +68,17 @@
    - `--ldap-admin`:在節點上能 sudo 的 LDAP 帳號，不一定要是 NAS 管理員。
    - 不加 `-y` 的話，每一步會先顯示摘要再問。
    - 多台機器:`--host a@IP1,a@IP2`。
-   - 中途失敗，修好後加 `--from 2` 或 `--from 3` 接著跑。
+   - 中途失敗，修好後加 `--from 2`、`--from 3` 或 `--from 4` 接著跑。
+   - 第 4 步需要 NAS 的 Syslog 伺服器已啟用(見 [syslog/README.md](../syslog/README.md));不需要就加 `--no-syslog`。
 
-`install-all.sh` 依序做三步:
+`install-all.sh` 依序做四步:
 
 | 步驟 | 腳本 | 登入帳號 | 做什麼 |
 |---|---|---|---|
 | 1 | `install-sssd-ldap.sh` | 本機管理員 | LDAP 登入、可登入群組、sudo 群組 |
 | 2 | `fix-local-uid.sh` | 能 sudo 的 LDAP 帳號 | 本機帳號改號，之後新增的本機帳號從 5000 起(見[補充](#補充單獨調整本機帳號-uid)) |
 | 3 | `install-nas-folders.sh` | 同上 | `~/nas-home`、`~/nas-share` |
+| 4 | `../syslog/install-syslog.sh` | 同上 | 重要紀錄送到 NAS、時區 Asia/Taipei |
 
 ---
 

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# 新節點一次設定完:LDAP 登入 -> 本機帳號改號 -> NAS 資料夾(~/nas-home、~/nas-share)。
-# 依序執行同目錄的三支腳本,參數由這裡轉過去:
-#   1. install-sssd-ldap.sh     用本機管理員登入(這時還沒有 LDAP)
-#   2. fix-local-uid.sh         用有 sudo 的 LDAP 帳號登入(不能用要改號的帳號自己改自己)
-#   3. install-nas-folders.sh   用同一個 LDAP 帳號登入
+# 新節點一次設定完:LDAP 登入 -> 本機帳號改號 -> NAS 資料夾(~/nas-home、~/nas-share)
+# -> 系統紀錄送到 NAS(syslog)與時區。依序執行下面四支腳本,參數由這裡轉過去:
+#   1. install-sssd-ldap.sh           用本機管理員登入(這時還沒有 LDAP)
+#   2. fix-local-uid.sh               用有 sudo 的 LDAP 帳號登入(不能用要改號的帳號自己改自己)
+#   3. install-nas-folders.sh         用同一個 LDAP 帳號登入
+#   4. ../syslog/install-syslog.sh    用同一個 LDAP 帳號登入(--no-syslog 跳過)
 # 密碼在一開始一次問完(查詢帳號、每台的本機管理員、LDAP 帳號),放在只有你能讀
-# 的暫存資料夾給三支腳本使用,結束時(含中途失敗)刪除;不寫進命令列、不留在電腦上。
+# 的暫存資料夾給各腳本使用,結束時(含中途失敗)刪除;不寫進命令列、不留在電腦上。
 # 每支腳本在自己的確認之前都不會修改機器;加 --yes 則所有確認都自動回答 y。
 #
 # 執行前在 NAS 網頁先做:把新節點的 IP 加進 homes、share 的 NFS 主機存取
-# (之後若改成整個節點網段,這步就不用每台做)。
+# (之後若改成整個節點網段,這步就不用每台做);第 4 步需要 NAS 的 Syslog 伺服器已啟用 TCP。
 #
 # 用法(在你自己的電腦上執行):
 #   bash install-all.sh --nas <NAS_IP> --domain <LDAP_DOMAIN> \
@@ -26,7 +27,9 @@
 #   --sudo-groups LIST     可 sudo 的群組(交給 install-sssd-ldap.sh),預設用選單勾選
 #   --personal F:P         預設 homes:nas-home(交給 install-nas-folders.sh),可重複
 #   --shared F:P           預設 share:nas-share(交給 install-nas-folders.sh),可重複
-#   --from N               從第 N 步開始(1-3),例如第 1 步做過了就 --from 2
+#   --no-syslog            不做第 4 步(syslog 與時區)
+#   --timezone ZONE        第 4 步設定的時區,預設 Asia/Taipei;none = 不改
+#   --from N               從第 N 步開始(1-4),例如第 1 步做過了就 --from 2
 #   -y, --yes              所有確認都自動回答 y(這支開頭的確認也一樣)
 #   -h, --help             顯示這份說明
 #
@@ -47,6 +50,8 @@ CFG_ALLOW_GROUPS=""           # --allow-groups,例如 cluster-admins,cluster-use
 CFG_SUDO_GROUPS=""            # --sudo-groups,例如 cluster-admins;none = 不給;空白 = 選單
 CFG_PERSONAL="homes:nas-home" # --personal,多個用逗號;--personal/--shared 都沒給才用
 CFG_SHARED="share:nas-share"  # --shared,多個用逗號
+CFG_SYSLOG=1                  # 1 = 做第 4 步(syslog);0 = 不做(同 --no-syslog)
+CFG_TIMEZONE="Asia/Taipei"    # --timezone,第 4 步設定的時區;none = 不改
 CFG_YES=0                     # 1 = 所有確認自動回答 y(同 -y)
 # =========================================================================
 
@@ -57,7 +62,7 @@ NAS=""; SCAN_USER=""; DOMAIN=""; LDAP_ADMIN=""
 WORK=""
 HOSTS=(); PERSONAL=(); SHARED=()
 ALLOW_GROUPS=""; SUDO_GROUPS=""; SUDO_SET=0
-FROM=1; YES=()
+FROM=1; YES=(); SYSLOG=""; TZONE=""
 
 die()  { echo "錯誤:$*" >&2; exit 1; }
 log()  { echo "==> $*"; }
@@ -93,6 +98,8 @@ while [ $# -gt 0 ]; do
         --sudo-groups)  SUDO_GROUPS="${2:-}"; SUDO_SET=1; shift 2 ;;
         --personal)     PERSONAL+=("${2:?}"); shift 2 ;;
         --shared)       SHARED+=("${2:?}"); shift 2 ;;
+        --no-syslog)    SYSLOG=0; shift ;;
+        --timezone)     TZONE="${2:?}"; shift 2 ;;
         --from)         FROM="${2:?}"; shift 2 ;;
         --yes|-y)       YES=(--yes); shift ;;
         -h|--help)      usage 0 ;;
@@ -115,12 +122,19 @@ if [ ${#PERSONAL[@]} -eq 0 ] && [ ${#SHARED[@]} -eq 0 ]; then
     [ -z "$CFG_SHARED" ]   || IFS=',' read -ra SHARED   <<< "$CFG_SHARED"
 fi
 [ "$CFG_YES" != "1" ] || YES=(--yes)
+[ -n "$SYSLOG" ] || SYSLOG="$CFG_SYSLOG"
+[ -n "$TZONE" ]  || TZONE="${CFG_TIMEZONE:-none}"
+SYSLOG_SH="$(readlink -f "$DIR/../syslog/install-syslog.sh" 2>/dev/null || true)"
 
 [ -t 0 ] || die "需要互動式終端機(密碼要當下輸入)"
 for s in install-sssd-ldap.sh fix-local-uid.sh install-nas-folders.sh; do
     [ -f "$DIR/$s" ] || die "同目錄找不到 $s"
 done
-[[ "$FROM" =~ ^[1-3]$ ]] || die "--from 只能是 1、2、3"
+if [ "$SYSLOG" = "1" ]; then
+    [ -n "$SYSLOG_SH" ] && [ -f "$SYSLOG_SH" ] || die "找不到 ../syslog/install-syslog.sh(不需要 syslog 就加 --no-syslog)"
+fi
+[[ "$FROM" =~ ^[1-4]$ ]] || die "--from 只能是 1、2、3、4"
+[ "$FROM" -lt 4 ] || [ "$SYSLOG" = "1" ] || die "--from 4 是 syslog,但加了 --no-syslog"
 
 ask() { local v; read -rp "$1" v; [ -n "$v" ] || die "$2 不能空白"; printf '%s' "$v"; }
 [ -n "$NAS" ]        || NAS="$(ask "NAS IP:" "NAS")"
@@ -149,9 +163,10 @@ cat <<EOF
  目標機器     :${HOSTS[*]}
  第 1 步      :install-sssd-ldap.sh     用 ${HOSTS[*]} 登入$([ "$FROM" -gt 1 ] && echo "(跳過)")
  第 2 步      :fix-local-uid.sh         用 ${LDAP_ADMIN} 登入$([ "$FROM" -gt 2 ] && echo "(跳過)")
- 第 3 步      :install-nas-folders.sh   用 ${LDAP_ADMIN} 登入
+ 第 3 步      :install-nas-folders.sh   用 ${LDAP_ADMIN} 登入$([ "$FROM" -gt 3 ] && echo "(跳過)")
+ 第 4 步      :install-syslog.sh        $([ "$SYSLOG" = "1" ] && echo "用 ${LDAP_ADMIN} 登入,時區 ${TZONE}" || echo "(不做)")
  對應         :$(for p in "${PERSONAL[@]}"; do printf '%s(每人一個) ' "$p"; done)$(for p in "${SHARED[@]}"; do printf '%s(大家共用) ' "$p"; done)
- NAS 要先做   :這些機器的 IP 已加進 homes、share 的 NFS 主機存取
+ NAS 要先做   :這些機器的 IP 已加進 homes、share 的 NFS 主機存取$([ "$SYSLOG" = "1" ] && echo ";Syslog 伺服器已啟用 TCP")
 ======================================
 $([ ${#YES[@]} -gt 0 ] && echo "--yes:所有確認自動回答 y" || echo "每支腳本開始前還會各自顯示摘要並確認。")
 EOF
@@ -197,10 +212,18 @@ if [ "$FROM" -le 2 ]; then
         || log "第 2 步有機器沒通過檢查,第 3 步會再檢查一次"
 fi
 
-echo; log "【第 3 步】NAS 資料夾(install-nas-folders.sh),用 ${LDAP_ADMIN} 登入"
-args=(--nas "$NAS" --host "$(join "${LDAP_HOSTS[@]}")")
-for p in "${PERSONAL[@]}"; do args+=(--personal "$p"); done
-for p in "${SHARED[@]}";   do args+=(--shared "$p"); done
-INSTALL_ALL_SECRETS="$S23" bash "$DIR/install-nas-folders.sh" "${args[@]}" "${YES[@]}" || die "第 3 步失敗。修好後用 --from 3 重跑"
+if [ "$FROM" -le 3 ]; then
+    echo; log "【第 3 步】NAS 資料夾(install-nas-folders.sh),用 ${LDAP_ADMIN} 登入"
+    args=(--nas "$NAS" --host "$(join "${LDAP_HOSTS[@]}")")
+    for p in "${PERSONAL[@]}"; do args+=(--personal "$p"); done
+    for p in "${SHARED[@]}";   do args+=(--shared "$p"); done
+    INSTALL_ALL_SECRETS="$S23" bash "$DIR/install-nas-folders.sh" "${args[@]}" "${YES[@]}" || die "第 3 步失敗。修好後用 --from 3 重跑"
+fi
+
+if [ "$SYSLOG" = "1" ]; then
+    echo; log "【第 4 步】系統紀錄送到 NAS、時區(install-syslog.sh),用 ${LDAP_ADMIN} 登入"
+    INSTALL_ALL_SECRETS="$S23" bash "$SYSLOG_SH" --nas "$NAS" --timezone "$TZONE" --host "$(join "${LDAP_HOSTS[@]}")" "${YES[@]}" \
+        || die "第 4 步失敗。修好後用 --from 4 重跑"
+fi
 
 echo; log "全部完成。"
