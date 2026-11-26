@@ -21,7 +21,8 @@ NAS 在 NAT 後面、路由器沒開埠，從外部連線靠 Link(QNAP 的中繼
    - 要讓別人用：同一頁「+ 新增」,輸入對方的 email 或手機號碼。對方登入自己的 QNAP ID 後，再用自己的 NAS 帳號(本機或 LDAP)登入。
 3. **公開服務**(NAS 的 myQNAPcloud App → 存取控制):只發佈要用的服務。
    - 保留:Web Administration、Web File Manager(含 Secure 版本)。
-   - 不用的(例如沒開的 Web Server)取消發佈。
+   - 服務本身沒開時(例如 Web Server、QuMagie),發佈開關是鎖住的，無法改，外部也連不到東西。
+   - 之後啟用某個服務(例如 Web Server)時，回這頁決定要不要對外發佈。
 
 測試：手機**關掉 Wi-Fi、用行動網路**打開 SmartURL。在內網測試可能直接走內網，測不出來。
 - 登入 QNAP ID 後看到 NAS 登入頁 = 正常。
