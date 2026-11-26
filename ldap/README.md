@@ -117,7 +117,7 @@ bash cleanup-ldap-user.sh --user <LDAP 使用者> --host <SSH_USER>@<HOST_IP>
 |---|---|
 | 憑證不驗證 | NAS 憑證是自簽、沒有 SAN 時 `demand` 會失敗。預設 `allow`:**有加密,但不驗證對方身分** |
 | host key | 第一次連線自動接受(`accept-new`),同網段可接受;之後 key 變了會拒絕 |
-| 改密碼 | `chpass_provider = none`,**到 NAS 的 LDAP 伺服器頁改** |
+| 改密碼 | `chpass_provider = none`(節點上 `passwd` 不能改)。使用者自己到 NAS 網頁「登入與安全性 → 密碼」改，或管理員在 LDAP 伺服器頁改;節點登入馬上用新密碼 |
 | SSH 公鑰 | NAS 的 LDAP schema 沒有 `ldapPublicKey`,公鑰放各機 `~/.ssh/authorized_keys` |
 | sudo | NAS 的 LDAP schema 沒有 `sudoRole`,sudo 只能用各機 `sudoers.d` |
 | 離線登入 | `cache_credentials = true`,NAS 斷線時曾登入過的人仍可登入;不要的話加 `--no-cache-credentials` |
