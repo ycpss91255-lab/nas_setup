@@ -6,6 +6,7 @@
 #   - 系統核心:kern,全部等級
 #   - 其他所有程式:警告(warning)以上
 # 用 TCP 傳送;NAS 連不上時先暫存在機器上(最多 200 MB),連回來後自動補送。
+# 同時把機器時區設成 --timezone(預設 Asia/Taipei),紀錄時間才會和 NAS 一致。
 #
 # 主要用法:在你自己的電腦上執行,不帶參數,依序回答問題。
 #   bash install-syslog.sh
@@ -26,6 +27,7 @@
 # 參數(沒給的先用腳本最上面「預設值」區塊的值,那裡也空白才會問)
 #   --nas IP               NAS 位址,可用 ssh 設定名稱(只取 HostName)
 #   --port N               NAS 的 Syslog TCP 埠,預設 514
+#   --timezone ZONE        機器時區,預設 Asia/Taipei;none = 不改
 #   --host [SSH_USER@]IP   目標機器,可重複或用逗號 a,b,c
 #   --yes                  跳過最後的確認
 #   -h, --help             顯示這份說明
@@ -35,6 +37,7 @@ set -euo pipefail
 # 命令列有給的參數優先;沒給就用這裡的值;這裡也空白才會互動詢問。
 CFG_NAS=""            # --nas,例如 192.168.1.10
 CFG_PORT=514          # --port
+CFG_TIMEZONE="Asia/Taipei"  # --timezone;none = 不改時區
 CFG_HOSTS=""          # --host,例如 admin@192.168.1.21,admin@192.168.1.22
 CFG_YES=0             # 1 = 所有確認自動回答 y
 # =========================================================================
@@ -47,7 +50,7 @@ QUEUE_NAME="nas_fwd"
 QUEUE_MAX="200m"
 MARK="# managed by install-syslog.sh (nas_setup); remove with remove-syslog.sh"
 
-NAS_ARG=""; NAS_HOST=""; PORT=""
+NAS_ARG=""; NAS_HOST=""; PORT=""; TZONE=""
 ASSUME_YES=0
 ARG_HOSTS=()
 WORK=""
@@ -118,6 +121,23 @@ if (\$syslogfacility-text == "auth" or \$syslogfacility-text == "authpriv" or \$
 EOF
 }
 
+# set_timezone ZONE: 0 = changed, 1 = already set / skipped
+set_timezone() {
+    local z="$1" cur
+    [ -n "$z" ] && [ "$z" != "none" ] || return 1
+    [ -f "/usr/share/zoneinfo/$z" ] || die "沒有這個時區:$z(例如 Asia/Taipei)"
+    cur="$(timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || true)"
+    [ "$cur" != "$z" ] || return 1
+    if command -v timedatectl >/dev/null && [ -d /run/systemd/system ]; then
+        timedatectl set-timezone "$z"
+    else
+        ln -sf "/usr/share/zoneinfo/$z" /etc/localtime
+        echo "$z" > /etc/timezone
+    fi
+    log "時區 ${cur:-未知} -> $z"
+    return 0
+}
+
 restart_rsyslog() {
     if command -v systemctl >/dev/null && [ -d /run/systemd/system ]; then
         systemctl enable rsyslog >/dev/null 2>&1 || true
@@ -140,12 +160,17 @@ install_here() {
     fi
     install -d -m 700 "$SPOOL"
 
+    local tz_changed=0
+    if set_timezone "$TZONE"; then tz_changed=1; fi
+
     local tmp old=""
     tmp="$(mktemp)"
     render_conf "$NAS_HOST" "$PORT" > "$tmp"
     if [ -f "$CONF" ] && cmp -s "$tmp" "$CONF"; then
         rm -f "$tmp"
         log "$(hostname):設定已是最新,不需要修改"
+        # rsyslog keeps the old timezone until restarted
+        [ "$tz_changed" -eq 0 ] || restart_rsyslog
     else
         if [ -f "$CONF" ]; then old="$(mktemp)"; cp -a "$CONF" "$old"; fi
         install -m 644 "$tmp" "$CONF"; rm -f "$tmp"
@@ -165,6 +190,7 @@ install_here() {
 check_tool() {
     echo "--- 設定檔";  if [ -f "$CONF" ]; then cat "$CONF"; else echo "(沒有 $CONF)"; fi
     echo "--- rsyslog"; systemctl is-active rsyslog 2>/dev/null || echo "(無法查詢)"
+    echo "--- 時區"; timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || echo "(無法查詢)"
     echo "--- 暫存佇列(NAS 連不上時才會有檔案)"
     local q found=0
     for q in "$SPOOL/$QUEUE_NAME".*; do [ -e "$q" ] && { ls -la "$q"; found=1; }; done
@@ -269,7 +295,7 @@ run_on() {
     local i="$1" rdir rc=0 cmd
     rdir="$(r_ssh "$i" 'umask 077; mktemp -d /tmp/nas-syslog.XXXXXX')" || return 1
     r_scp "$i" "$rdir" "$SELF" || { r_ssh "$i" "rm -rf '$rdir'" || true; return 1; }
-    cmd="bash $(printf '%q' "$rdir/$(basename "$SELF")") here --nas $(printf '%q' "$NAS_HOST") --port $(printf '%q' "$PORT")"
+    cmd="bash $(printf '%q' "$rdir/$(basename "$SELF")") here --nas $(printf '%q' "$NAS_HOST") --port $(printf '%q' "$PORT") --timezone $(printf '%q' "$TZONE")"
     if [ "${T_ROOT[$i]}" -eq 1 ]; then
         r_ssh "$i" "$cmd" || rc=$?
     else
@@ -322,7 +348,8 @@ remote_main() {
  送到     :${NAS_HOST}:${PORT}(TCP)
  送出內容 :auth、authpriv、kern 全部;其他程式 warning 以上
  斷線時   :暫存在 ${SPOOL}(最多 ${QUEUE_MAX}),連回來後補送
- 會修改   :${CONF}(沒有 rsyslog 會先安裝)
+ 時區     :${TZONE}
+ 會修改   :${CONF}(沒有 rsyslog 會先安裝)、時區
 ======================================
 EOF
     if [ "$ASSUME_YES" -eq 0 ]; then
@@ -345,6 +372,7 @@ parse_opts() {
         case "$1" in
             --nas)    NAS_ARG="${2:?}"; shift 2 ;;
             --port)   PORT="${2:?}"; shift 2 ;;
+            --timezone) TZONE="${2:?}"; shift 2 ;;
             --host)   IFS=',' read -ra _h <<< "${2:?}"; ARG_HOSTS+=("${_h[@]}"); shift 2 ;;
             --yes|-y) ASSUME_YES=1; shift ;;
             *) die "不認得的參數:$1(請看 --help)" ;;
@@ -352,6 +380,7 @@ parse_opts() {
     done
     [ -n "$NAS_ARG" ] || NAS_ARG="$CFG_NAS"
     [ -n "$PORT" ]    || PORT="$CFG_PORT"
+    [ -n "$TZONE" ]   || TZONE="${CFG_TIMEZONE:-none}"
     if [ ${#ARG_HOSTS[@]} -eq 0 ] && [ -n "$CFG_HOSTS" ]; then IFS=',' read -ra ARG_HOSTS <<< "$CFG_HOSTS"; fi
     [ "$CFG_YES" != "1" ] || ASSUME_YES=1
 }
