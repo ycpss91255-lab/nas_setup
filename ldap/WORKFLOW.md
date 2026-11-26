@@ -177,10 +177,12 @@ bash fix-local-uid.sh --host <LDAP_USER>@<HOST_IP>
 
 | 備份 | 排程 | 位置 |
 |---|---|---|
-| LDAP 資料庫 | 每星期六 00:00,覆寫 `LDAP_Backup.exp` | NAS 管理員家目錄的 `backup/` |
+| LDAP 資料庫 | 每星期六 00:00,覆寫 `LDAP_Backup.exp` | NAS 上插著的 USB 隨身碟，`nas-backup/` |
 | NAS 系統設定 | 每星期六 01:00,檔名帶日期 | 同上 |
 
-NAS 外的備份：之後插隨身碟，把 `backup/` 複製過去。
+- 設定位置:LDAP 伺服器 → 備份/還原;控制台 → 系統 → 備份/還原。
+- USB 要一直插著，拔掉的那週備份會失敗。
+- NAS 壞掉時，把 USB 插到任何電腦就能拿到備份檔。
 
 ### NAS 重開機或斷線
 
