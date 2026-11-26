@@ -12,6 +12,7 @@ NAS 相關的設定流程與腳本。以 QNAP(QuTS hero)為主，搭配 Debian /
 |---|---|
 | [`ldap/`](ldap/) | NAS 內建 LDAP 給節點登入、節點家目錄裡的 NAS 資料夾(NFS) |
 | [`syslog/`](syslog/) | 節點重要的系統紀錄(登入、sudo、警告以上)集中送到 NAS,並設定時區 |
+| [`radius/`](radius/) | Wi-Fi 用自己的 LDAP 帳號登入(NAS 上的 FreeRADIUS 容器) |
 
 之後會加入 VPN 等其他設定。
 
@@ -55,6 +56,7 @@ NAS 相關的設定流程與腳本。以 QNAP(QuTS hero)為主，搭配 Debian /
 - LDAP 帳號的新增、刪除，節點移除：[ldap/WORKFLOW.md](ldap/WORKFLOW.md)
 - LDAP 腳本細節：[ldap/README.md](ldap/README.md)
 - syslog 細節、移除、看紀錄：[syslog/README.md](syslog/README.md)
+- Wi-Fi 帳號登入：[radius/README.md](radius/README.md)
 
 ## 授權
 

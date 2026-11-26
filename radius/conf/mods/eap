@@ -1,0 +1,30 @@
+# 只提供 EAP-TTLS(裡面用 PAP 傳密碼)。
+# PEAP-MSCHAPv2 需要 NT 密碼雜湊,NAS 的 LDAP 不提供，所以不開。
+eap {
+	default_eap_type = ttls
+	timer_expire = 60
+	ignore_unknown_eap_types = no
+	max_sessions = ${max_requests}
+
+	tls-config tls-common {
+		private_key_file = ${certdir}/wifi/server.key
+		certificate_file = ${certdir}/wifi/server.pem
+		ca_file = ${certdir}/wifi/ca.pem
+		tls_min_version = "1.2"
+		tls_max_version = "1.2"
+		cipher_list = "DEFAULT"
+		cache {
+			enable = no
+		}
+		ocsp {
+			enable = no
+		}
+	}
+
+	ttls {
+		tls = tls-common
+		copy_request_to_tunnel = no
+		use_tunneled_reply = no
+		virtual_server = "inner-tunnel"
+	}
+}

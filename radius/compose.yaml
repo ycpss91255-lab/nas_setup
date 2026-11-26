@@ -1,0 +1,26 @@
+# Wi-Fi 帳號登入(WPA2-Enterprise)的 RADIUS 伺服器，跑在 NAS 的 Container Station。
+# 貼到 Container Station → 建立 → 應用程式，填好下面兩個密碼再建立。
+services:
+  radius:
+    image: freeradius/freeradius-server:3.2.7
+    container_name: wifi-radius
+    # 用 host 網路：路由器送來的請求來源 IP 才不會被改掉
+    network_mode: host
+    restart: unless-stopped
+    entrypoint: ["sh", "/opt/wifi/start.sh"]
+    volumes:
+      # File Station 上傳的設定資料夾(含 certs/)
+      - /share/Container/wifi-radius:/opt/wifi:ro
+    environment:
+      LDAP_HOST: "127.0.0.1"            # NAS 自己的 LDAP(容器用 host 網路)
+      LDAP_BASE_DN: "dc=example,dc=com" # 改成你的 LDAP base DN
+      LDAP_BIND_USER: "scan_group"      # 查詢用的 LDAP 帳號(跟節點 sssd 用的同一個)
+      LDAP_BIND_PW: ""                  # ← 填 scan_group 的密碼
+      WIFI_GROUP: "wifi-users"          # 只有這個 LDAP 群組的人能連 Wi-Fi
+      CLIENT_IP: "192.168.1.1"          # 改成路由器的 IP
+      RADIUS_SECRET: ""                 # ← 填一組長的隨機字串，路由器那邊填一樣的
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,35 @@
+# 對外：路由器送來的驗證請求(UDP 1812)。
+server default {
+	listen {
+		type = auth
+		ipaddr = *
+		port = 1812
+	}
+
+	authorize {
+		filter_username
+		preprocess
+		# Wi-Fi(EAP-TTLS):交給 eap,真正的帳密在 inner-tunnel 檢查
+		if (&EAP-Message) {
+			eap
+			return
+		}
+		# 沒有 EAP 的 PAP 請求：只用來測試(radtest)
+		wifi_ldap
+	}
+
+	authenticate {
+		Auth-Type LDAP {
+			ldap
+		}
+		eap
+	}
+
+	post-auth {
+		Post-Auth-Type REJECT {
+			attr_filter.access_reject
+			eap
+			remove_reply_message_if_eap
+		}
+	}
+}

@@ -1,0 +1,16 @@
+# 檢查：有密碼、LDAP 找得到、在允許的群組，才交給 LDAP 驗證密碼。
+wifi_ldap {
+	if (!&User-Password) {
+		reject
+	}
+	ldap
+	if (notfound) {
+		reject
+	}
+	if (!(&LDAP-Group == "$ENV{WIFI_GROUP}")) {
+		reject
+	}
+	update control {
+		&Auth-Type := LDAP
+	}
+}

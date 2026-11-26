@@ -1,0 +1,54 @@
+# 連 NAS 的 LDAP:用查詢帳號找使用者與群組，再用使用者自己的密碼登入(bind)驗證。
+# 不讀取任何密碼雜湊。
+ldap {
+	server = "ldaps://$ENV{LDAP_HOST}"
+	identity = "uid=$ENV{LDAP_BIND_USER},ou=people,$ENV{LDAP_BASE_DN}"
+	password = "$ENV{LDAP_BIND_PW}"
+	base_dn = "$ENV{LDAP_BASE_DN}"
+
+	user_dn = "LDAP-UserDn"
+
+	user {
+		base_dn = "ou=people,${..base_dn}"
+		filter = "(uid=%{%{Stripped-User-Name}:-%{User-Name}})"
+		scope = 'one'
+	}
+
+	# QNAP LDAP 的群組是 posixGroup,成員記在 memberUid
+	group {
+		base_dn = "ou=group,${..base_dn}"
+		filter = '(objectClass=posixGroup)'
+		scope = 'one'
+		name_attribute = cn
+		membership_filter = "(memberUid=%{%{Stripped-User-Name}:-%{User-Name}})"
+		cacheable_name = no
+		cacheable_dn = no
+	}
+
+	options {
+		chase_referrals = no
+		res_timeout = 10
+		srv_timelimit = 3
+		net_timeout = 3
+		idle = 60
+		probes = 3
+		interval = 3
+		ldap_debug = 0
+	}
+
+	# NAS 的 LDAP 憑證是自簽、沒有主機名稱，所以不驗證憑證(連線仍加密)
+	tls {
+		require_cert = 'never'
+	}
+
+	pool {
+		start = 0
+		min = 0
+		max = 10
+		spare = 3
+		uses = 0
+		retry_delay = 30
+		lifetime = 0
+		idle_timeout = 60
+	}
+}

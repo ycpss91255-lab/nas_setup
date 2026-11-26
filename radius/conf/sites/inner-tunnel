@@ -1,0 +1,25 @@
+# TTLS 加密通道裡面：使用者的帳號密碼在這裡驗證。
+server inner-tunnel {
+	listen {
+		type = auth
+		ipaddr = 127.0.0.1
+		port = 18120
+	}
+
+	authorize {
+		filter_username
+		wifi_ldap
+	}
+
+	authenticate {
+		Auth-Type LDAP {
+			ldap
+		}
+	}
+
+	post-auth {
+		Post-Auth-Type REJECT {
+			attr_filter.access_reject
+		}
+	}
+}
