@@ -7,8 +7,10 @@
 | 類別 | 內容 | 等級 |
 |---|---|---|
 | auth、authpriv | SSH 登入、sudo、su | 全部 |
-| kern | 系統核心 | 全部 |
+| kern | 系統核心 | warning 以上 |
 | 其他程式 | — | warning 以上 |
+
+- kern 只送 warning 以上：跑 k3s/Docker 的節點，容器每次啟動、結束都會產生好幾行網路介面訊息(`veth… entered promiscuous mode` 等),全送會灌爆 NAS。
 
 - 用 TCP 傳送。
 - NAS 連不上時，先暫存在節點的 `/var/spool/rsyslog`(最多 200 MB),連回來後自動補送。

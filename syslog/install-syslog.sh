@@ -3,8 +3,8 @@
 #
 # 送出的紀錄(只送重要的):
 #   - 登入與權限:auth、authpriv(SSH 登入、sudo、su 等),全部等級
-#   - 系統核心:kern,全部等級
-#   - 其他所有程式:警告(warning)以上
+#   - 系統核心(kern)與其他所有程式:警告(warning)以上
+#     (kern 不全送：容器每次啟動/結束都會產生多行 veth/bridge 訊息，跑 k3s/Docker 的節點會灌爆 NAS)
 # 用 TCP 傳送;NAS 連不上時先暫存在機器上(最多 200 MB),連回來後自動補送。
 # 同時把機器時區設成 --timezone(預設 Asia/Taipei),紀錄時間才會和 NAS 一致。
 #
@@ -109,8 +109,8 @@ valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
 render_conf() {
     cat <<EOF
 $MARK
-# 送到 NAS:auth/authpriv/kern 全部,其他 warning 以上。NAS 連不上時暫存在 $SPOOL。
-if (\$syslogfacility-text == "auth" or \$syslogfacility-text == "authpriv" or \$syslogfacility-text == "kern" or \$syslogseverity <= 4) then {
+# 送到 NAS:auth/authpriv 全部,其他(含 kern)warning 以上。NAS 連不上時暫存在 $SPOOL。
+if (\$syslogfacility-text == "auth" or \$syslogfacility-text == "authpriv" or \$syslogseverity <= 4) then {
     action(type="omfwd" target="$1" port="$2" protocol="tcp"
            template="RSYSLOG_ForwardFormat"
            queue.type="LinkedList" queue.filename="$QUEUE_NAME"
@@ -346,7 +346,7 @@ remote_main() {
 ================ 摘要 ================
  目標機器 :${names[*]}
  送到     :${NAS_HOST}:${PORT}(TCP)
- 送出內容 :auth、authpriv、kern 全部;其他程式 warning 以上
+ 送出內容 :auth、authpriv 全部;其他程式(含 kern)warning 以上
  斷線時   :暫存在 ${SPOOL}(最多 ${QUEUE_MAX}),連回來後補送
  時區     :${TZONE}
  會修改   :${CONF}(沒有 rsyslog 會先安裝)、時區
